@@ -84,26 +84,17 @@ class DepthEstimator(Node):
         # Bounding box data
         x, y, w, h = self.bbx, self.bby, self.bbw, self.bbh
 
-        # Compute center point of the bounding box
-        cx = (x + w) / 2
-        cy = (y + h) / 2
+        z_values = []
 
-        z = self.last_z
-        # Compute 3D coordinates of the center point
-        depth = depth_map[int(cy), int(cx)]
-        if depth >= 0 and self.bbx != -1 and self.bby != -1:
-            # Use the actual distance formula (in centimeters) from depth and camera intrinsic parameters
-            x_normalized = (self.fx + self.fy) / 2 / depth  # Normalization of x
-            z = (
-                0.00000000001 * x_normalized**5 -
-                0.00000002 * x_normalized**4 +
-                0.00001 * x_normalized**3 -
-                0.0228 * x_normalized**2 +
-                3.4115 * x_normalized - 
-                9.5276
-            )
-            z *= 10   # Conversion to centimeters (1 meter = 100 centimeters)
+        # Loop through each pixel in the bounding box
+        for row in range(int(y), int(y + h)):
+            for col in range(int(x), int(x + w)):
+                depth = depth_map[row, col]
+                z_values.append(depth)
 
+        # Calculate the average depth within the bounding box
+        if len(z_values) > 0:
+            average_depth = np.mean(z_values)
             # Publish distance as a ROS Image message
             distance_msg = Image()
             distance_msg.header = msg.header
@@ -112,7 +103,7 @@ class DepthEstimator(Node):
             distance_msg.height = 1
             distance_msg.step = 2
             # Convert the z value to uint16 data type
-            z_uint16 = np.uint16(z)
+            z_uint16 = np.uint16(average_depth)
             distance_msg.data = z_uint16.tobytes()
             self.depth_pub.publish(distance_msg)
 
@@ -120,7 +111,7 @@ class DepthEstimator(Node):
         depth_map = cv2.normalize(depth_map, None, 0, 255, cv2.NORM_MINMAX, cv2.CV_8U)
         depth_map = cv2.applyColorMap(depth_map, cv2.COLORMAP_JET)
         cv2.rectangle(cv_image, (int(x), int(y)), (int(x + w), int(y + h)), (0, 255, 0), 2)
-        cv2.putText(cv_image, f"Distance: {z:.1f} cm", (int(x), int(y) - 10),
+        cv2.putText(cv_image, f"Distance: {np.mean(z_values):.1f} cm", (int(x), int(y) - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         cv2.imshow("Depth Map", depth_map)
         cv2.imshow("Frame", cv_image)
